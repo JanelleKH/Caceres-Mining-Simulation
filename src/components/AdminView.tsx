@@ -19,6 +19,7 @@ import {
 } from '../data/mapOverlap';
 import { getIndustrialSymbolDef, type IndustrialSymbolType } from './map/mapSymbols';
 import { getCsvField, parseCsvLine } from '../utils/csvParse';
+import { checkCsvForSlot } from '../utils/csvSchema';
 
 interface CommunityResult {
   winnerId: string;
@@ -443,17 +444,41 @@ function FeasibilitySectionCard({ section }: { section: FeasibilitySection }) {
 export const AdminView: React.FC = () => {
   const [communityData, setCommunityData] = useState<CommunityResult | null>(null);
   const [developerData, setDeveloperData] = useState<DeveloperResult | null>(null);
+  const [uploadErrors, setUploadErrors] = useState<Record<'community' | 'developer', string | null>>({
+    community: null,
+    developer: null,
+  });
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, type: 'community' | 'developer') => {
-    const file = e.target.files?.[0];
+    const input = e.target;
+    const file = input.files?.[0];
     if (!file) return;
 
     const reader = new FileReader();
     reader.onload = evt => {
-      const text = evt.target?.result as string;
+      const text = (evt.target?.result as string) ?? '';
+
+      const check = checkCsvForSlot(text, type);
+      if (!check.ok) {
+        setUploadErrors(prev => ({ ...prev, [type]: check.message ?? 'This file could not be read.' }));
+        input.value = '';
+        return;
+      }
+
       const data = parseCSV(text, type);
-      if (type === 'community') setCommunityData(data as CommunityResult | null);
-      else setDeveloperData(data as DeveloperResult | null);
+      if (!data) {
+        setUploadErrors(prev => ({
+          ...prev,
+          [type]: 'That file has a header row but no results row.',
+        }));
+        input.value = '';
+        return;
+      }
+
+      setUploadErrors(prev => ({ ...prev, [type]: null }));
+      if (type === 'community') setCommunityData(data as CommunityResult);
+      else setDeveloperData(data as DeveloperResult);
+      input.value = '';
     };
     reader.readAsText(file);
   };
@@ -507,6 +532,11 @@ export const AdminView: React.FC = () => {
           </div>
           <div className="text-center">
             <h3 className="font-bold text-lg mb-2">Community Results</h3>
+            {uploadErrors.community && (
+              <p className="text-sm text-red-700 font-medium mb-2 bg-red-50 border border-red-200 rounded-lg p-2 text-left">
+                {uploadErrors.community}
+              </p>
+            )}
             {communityData ? (
               <div className="text-sm text-green-700 font-mono mb-2 text-left bg-white p-3 rounded border border-green-200">
                 <div className="font-bold border-b border-green-100 pb-1 mb-1">Uploaded Data:</div>
@@ -556,6 +586,11 @@ export const AdminView: React.FC = () => {
           </div>
           <div className="text-center">
             <h3 className="font-bold text-lg mb-2">Developer Results</h3>
+            {uploadErrors.developer && (
+              <p className="text-sm text-red-700 font-medium mb-2 bg-red-50 border border-red-200 rounded-lg p-2 text-left">
+                {uploadErrors.developer}
+              </p>
+            )}
             {developerData ? (
               <div className="text-sm text-orange-700 font-mono mb-2 text-left bg-white p-3 rounded border border-orange-200">
                 <div className="font-bold border-b border-orange-100 pb-1 mb-1">Uploaded Data:</div>
